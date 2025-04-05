@@ -38,6 +38,11 @@ from .datatypes import LLMInput, MaskedEmbedding, TransformerInput
 from .model import Transformer
 from .tokenizer import Tokenizer
 
+def get_model_parallel_rank():
+    return jax.process_index()
+
+def jax_distributed_is_initialized():
+    return jax.process_count() > 1
 
 @dataclass
 class GenerationResult:
@@ -78,8 +83,18 @@ class Llama4:
         quantization_mode: Optional[str] = None,
         seed: int = 1,
     ):
-        if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group("nccl")
+        # if not torch.distributed.is_initialized():
+        #     torch.distributed.init_process_group("nccl")
+
+        if not jax_distributed_is_initialized():
+            from jax.distributed import initialize
+
+            initialize(
+                coordinator_address="192.168.1.1:1234",  # IP:port of the main node (like rank 0 in PyTorch)
+                num_processes=4,                         # Same as world_size
+                process_id=0,                            # Same as rank
+                local_device_ids=None                   # Optional: which devices on this host to use
+            )
 
         if not model_parallel_is_initialized():
             if world_size is None:
